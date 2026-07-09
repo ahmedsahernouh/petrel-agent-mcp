@@ -34,21 +34,20 @@ Every tool is built on the highest viable tier of a strict hierarchy:
 Requirements: Windows, Python 3.10+ (the MCP server itself is **pure standard library** — no `pip install` needed to run it).
 
 ```powershell
-git clone <this-repo> ; cd petrel-no-ocean-mcp
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\setup_petrel_mcp.ps1   # generates .mcp.json for this checkout
-python scripts\test_petrel_mcp_server.py                                              # protocol-level smoke test, 41 tools
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\doctor_petrel_mcp.ps1 # environment doctor
+git clone https://github.com/ahmedsahernouh/petrel-agent-mcp ; cd petrel-agent-mcp
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\setup_petrel_mcp.ps1
 ```
 
-Then add the server to your MCP client (Claude Code picks up the project `.mcp.json` automatically):
+That single command checks your Python version, creates a local `.venv`, installs the optional geodata packages (numpy, zmapio, pyzgy, lasio, pandas — for the surface/ZGY/grid/LAS chain tools), writes the project `.mcp.json`, reports whether Tesseract and Petrel are present, and finishes by running the 41-tool protocol smoke test. If it prints `Petrel MCP smoke test passed`, you are done. Pass `-NoVenv -NoGeodata -NoSmoke` for the minimal config-only behavior; `scripts\doctor_petrel_mcp.ps1` is the deeper environment check.
+
+Then approve the server in your MCP client (Claude Code picks up the project `.mcp.json` automatically), or register it manually:
 
 ```powershell
 claude mcp add --transport stdio petrel-no-ocean-control -- python <checkout>\mcp\petrel_mcp_server.py
 ```
 
-Optional extras, only for the tools that need them:
+External tools some routes need (setup detects and reports both; nothing fails without them):
 
-- `pip install -r requirements-geodata.txt` — surface/ZGY/grid/LAS chain tools (numpy, zmapio, pyzgy, lasio, pandas)
 - [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) — deterministic GUI tools only
 - Petrel 2018.2 — only for the 9 tools that launch or drive Petrel itself
 
