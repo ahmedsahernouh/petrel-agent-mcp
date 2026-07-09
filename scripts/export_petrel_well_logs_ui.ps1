@@ -1003,27 +1003,53 @@ function Find-ExplorerInputTabByOcr {
     $results = Find-OcrTextInWindowRegion -MainWindow $MainWindow -Pattern "\bResults\b" -FileName "02a_explorer_tabs_results_ocr.png" -MinLeft 0 -MaxLeft $paneMaxLeft -MinTop $stripTop -MaxTop $stripBottom -MinConfidence 25
     $templates = Find-OcrTextInWindowRegion -MainWindow $MainWindow -Pattern "\bTemplates\b" -FileName "02a_explorer_tabs_templates_ocr.png" -MinLeft 0 -MaxLeft $paneMaxLeft -MinTop $stripTop -MaxTop $stripBottom -MinConfidence 25
 
-    if ($null -eq $input) {
-        Write-RunTrace "explorer_input_tab: Input label not found on Models/Results/Templates tab strip top=$stripTop bottom=$stripBottom"
-        return $null
-    }
-    if ($input.left -gt ($models.left + 8)) {
-        Write-RunTrace "explorer_input_tab: rejected Input '$($input.text)' because it is not left of Models. input_left=$($input.left) models_left=$($models.left)"
-        return $null
-    }
-
+    # Sibling data tabs (Models is required; Results/Templates confirm the strip).
     $siblingLabels = New-Object System.Collections.ArrayList
     [void]$siblingLabels.Add("Models")
     if ($null -ne $results) { [void]$siblingLabels.Add("Results") }
     if ($null -ne $templates) { [void]$siblingLabels.Add("Templates") }
-    # Require Models plus at least one other data tab. Demanding all three
-    # (Models AND Results AND Templates) caused false negatives: when the Models
-    # tab is the active one, OCR reliably reads the bold active label but can miss
-    # a dimmer sibling, which used to fail the whole activation even though the
-    # Input tab was clearly present. The left-of-Models position and the
-    # reject-below-Processes guard below still prevent matching stray "Input" text.
+    # Require Models plus at least one other data tab. Demanding all three caused
+    # false negatives: OCR reliably reads the bold active label but can miss a
+    # dimmer sibling. The geometry and reject-below-Processes guards below still
+    # prevent activating the wrong location.
     if ($siblingLabels.Count -lt 2) {
-        Write-RunTrace "explorer_input_tab: rejected Input because no sibling data tab was found next to Models. found=$($siblingLabels -join ',') strip=$stripTop-$stripBottom"
+        Write-RunTrace "explorer_input_tab: rejected because no sibling data tab was found next to Models. found=$($siblingLabels -join ',') strip=$stripTop-$stripBottom"
+        return $null
+    }
+
+    # The Input tab is the leftmost of a fixed strip: Input | Models | Results |
+    # Templates. OCR reads the ~11px "Input" glyph only intermittently (and it
+    # restyles when active), but "Models"/"Results" read reliably. So if the direct
+    # "Input" OCR misses, synthesize its click point from tab geometry: one tab
+    # pitch left of Models, where pitch = Results.left - Models.left. This removes
+    # the run's dependence on reading the tiny Input label at all.
+    $inputSynthesized = $false
+    if ($null -eq $input) {
+        $pitch = $null
+        if ($null -ne $results) { $pitch = [int]($results.left - $models.left) }
+        elseif ($null -ne $templates) { $pitch = [int](($templates.left - $models.left) / 2) }
+        if ($null -ne $pitch -and $pitch -ge 30 -and $pitch -le 200) {
+            $synthLeft = [int]($models.left - $pitch)
+            if ($synthLeft -ge 0) {
+                $input = [pscustomobject]@{
+                    text = "Input(synth)"
+                    left = $synthLeft
+                    top = [int]$models.top
+                    width = [int][math]::Min($pitch - 4, $models.width + 10)
+                    height = [int]$models.height
+                    confidence = 0
+                }
+                $inputSynthesized = $true
+                Write-RunTrace "explorer_input_tab: Input OCR missed; synthesized from Models/Results geometry pitch=$pitch left=$synthLeft top=$($models.top)"
+            }
+        }
+        if ($null -eq $input) {
+            Write-RunTrace "explorer_input_tab: Input label not found and could not synthesize from geometry (models_left=$($models.left) results=$($null -ne $results) templates=$($null -ne $templates))"
+            return $null
+        }
+    }
+    if (-not $inputSynthesized -and $input.left -gt ($models.left + 8)) {
+        Write-RunTrace "explorer_input_tab: rejected Input '$($input.text)' because it is not left of Models. input_left=$($input.left) models_left=$($models.left)"
         return $null
     }
 
@@ -1067,16 +1093,14 @@ function Activate-ExplorerInputTab {
         return $null
     }
 
-    # Click the Input tab to make it active, then confirm the switch actually took
-    # by re-locating the strip; click once more if Petrel had not repainted yet.
+    # Click the Input tab to make it active. Do NOT re-run OCR to "confirm" the
+    # switch: the "Input" label is an ~11px glyph that Tesseract reads only
+    # intermittently (observed finding it once then missing it 4x at the same
+    # position in one run). A second OCR pass adds no certainty and was the actual
+    # failure point. The click on a confirmed Input-tab match reliably activates
+    # the pane; the caller uses the returned match to bound the tree scan.
     Click-OcrWindowMatch -MainWindow $MainWindow -Match $match | Out-Null
     Start-Sleep -Milliseconds 400
-    $confirm = Find-ExplorerInputTabByOcr -MainWindow $MainWindow
-    if ($null -ne $confirm) {
-        Click-OcrWindowMatch -MainWindow $MainWindow -Match $confirm | Out-Null
-        Start-Sleep -Milliseconds 250
-        $match = $confirm
-    }
     return $match
 }
 
@@ -1616,20 +1640,23 @@ function Invoke-WellTopsExportMenu {
     $rect = Get-ElementRect -Element $MainWindow
         Write-RunTrace "welltops_menu: main rect $($rect.Left),$($rect.Top),$($rect.Width),$($rect.Height)"
 
-    # Self-heal the Explorer pane before selecting Well Tops, in BOTH modes. If a
-    # leftover Models/Results/Templates view is active, the coordinate click (or the
-    # OCR tree scan) would land on the wrong tree - this is the "Models pane was up
-    # instead of Input pane" failure. Best-effort here; the non-coordinate path
-    # re-activates fail-closed below, so a confirmed switch is still required there.
+    # Activate the Explorer Input data tab once, in BOTH modes. If a leftover
+    # Models/Results/Templates view is active, the coordinate click (or the OCR
+    # tree scan) would land on the wrong tree - this is the "Models pane was up
+    # instead of Input pane" failure. This one call runs the full fail-closed
+    # selector (Input left of Models, sibling data tab present, not Processes>Input)
+    # and clicks the confirmed tab. Its result is reused below so we never re-run
+    # the flaky ~11px "Input" OCR a second time in the same run.
+    $inputTabMatch = $null
     try {
-        $preTab = Activate-ExplorerInputTab -MainWindow $MainWindow
-        if ($null -ne $preTab) {
-            Write-RunTrace "welltops_menu: pre-activated Explorer Input tab '$($preTab.text)'"
-        } else {
-            Write-RunTrace "welltops_menu: Input tab pre-activation not confirmed (continuing)"
-        }
+        $inputTabMatch = Activate-ExplorerInputTab -MainWindow $MainWindow
     } catch {
-        Write-RunTrace "welltops_menu: Input tab pre-activation error $($_.Exception.Message)"
+        Write-RunTrace "welltops_menu: Input tab activation error $($_.Exception.Message)"
+    }
+    if ($null -ne $inputTabMatch) {
+        Write-RunTrace "welltops_menu: activated Explorer Input tab '$($inputTabMatch.text)' rect $($inputTabMatch.left),$($inputTabMatch.top),$($inputTabMatch.width),$($inputTabMatch.height)"
+    } else {
+        Write-RunTrace "welltops_menu: Input tab activation not confirmed on first pass"
     }
 
     if ($CoordinateFallback) {
@@ -1668,8 +1695,15 @@ function Invoke-WellTopsExportMenu {
         return
     }
 
-    $inputTabMatch = Activate-ExplorerInputTab -MainWindow $MainWindow -FailClosed
-    Write-RunTrace "welltops_menu: activated Explorer Input tab by OCR '$($inputTabMatch.text)' rect $($inputTabMatch.left),$($inputTabMatch.top),$($inputTabMatch.width),$($inputTabMatch.height)"
+    # Reuse the Input tab anchor from the single activation above. Only re-activate
+    # (fail-closed) if that first pass never confirmed one - this avoids a second
+    # flaky ~11px "Input" OCR pass that, once activated, adds no certainty and was
+    # the observed failure point. Either way we require a real, guard-checked anchor
+    # before scanning the tree, so the fail-closed contract holds.
+    if ($null -eq $inputTabMatch) {
+        $inputTabMatch = Activate-ExplorerInputTab -MainWindow $MainWindow -FailClosed
+        Write-RunTrace "welltops_menu: re-activated Explorer Input tab by OCR '$($inputTabMatch.text)' rect $($inputTabMatch.left),$($inputTabMatch.top),$($inputTabMatch.width),$($inputTabMatch.height)"
+    }
 
     $wellTopsPattern = "\b(Well|Weil|Weli|Wal)\s*T(o|op|oe|0)"
     $wellTopsMatch = Find-WellTopsInInputTree -MainWindow $MainWindow -Pattern $wellTopsPattern -MaxPages 12 -ExplorerInputTabMatch $inputTabMatch
