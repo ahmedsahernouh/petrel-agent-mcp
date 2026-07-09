@@ -1,4 +1,4 @@
-# Petrel No-Ocean MCP
+# Petrel Agent MCP
 
 **An AI agent control surface for Schlumberger Petrel — with no Ocean SDK, no vendor API, and no Python connector.**
 
