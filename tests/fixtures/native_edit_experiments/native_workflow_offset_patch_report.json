@@ -1,0 +1,14 @@
+﻿{
+    "created_at_utc":  "2026-07-04T17:02:27.2838227Z",
+    "project_directory":  "D:\\Computer\\Code\\Petrel_project\\Petrel_DemoData_project",
+    "project_stem":  "Petrel2010 demo project ExportPilot",
+    "target_path":  "D:\\Computer\\Code\\Petrel_project\\Petrel_DemoData_project\\Petrel2010 demo project ExportPilot.ptd\\Data.ptd",
+    "target_backup":  "D:\\Computer\\Code\\Petrel_project\\build\\native_edit_experiments\\native_workflow_offset_patch_20260704_100225\\Data.ptd",
+    "offset":  173185535,
+    "expected":  "post",
+    "replace":  "p0st",
+    "byte_length":  4,
+    "dry_run":  false,
+    "before_sha256":  "2ad1cc7504d4095d87f125eb1e95a60d39e247b5a874e9049df2c3687c562f08",
+    "after_sha256":  "bb48ea7cb160817aef34f7a32092c83e8afd9dae430863e8395320414dff8d5a"
+}

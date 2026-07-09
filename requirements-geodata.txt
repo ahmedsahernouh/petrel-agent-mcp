@@ -1,0 +1,5 @@
+numpy
+zmapio
+pyzgy
+lasio
+pandas

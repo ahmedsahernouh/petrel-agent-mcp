@@ -1,0 +1,179 @@
+{
+  "id": "export_well_tops_table_clipboard",
+  "version": 1,
+  "title": "Export Well Tops Project Data Table",
+  "petrel_version_scope": "Petrel 2018.2 local help with Petrel 2010 demo-project automation copy",
+  "strategy": "deterministic_gui_project_data_table",
+  "zero_gui": {
+    "preferred_tools": [
+      "petrel_export_well_tables_zero_gui",
+      "petrel_export_well_tops_native_probe"
+    ],
+    "current_status": "insufficient_for_confirmed_marker_pick_table",
+    "reason": "The current zero-GUI path provides conservative rows, but the Petrel GUI Project Data Table remains the ground-truth source for visible marker-pick rows until native marker payload decoding is complete.",
+    "fallback_allowed": true
+  },
+  "gui": {
+    "adapter": "export_petrel_well_tops_table_ui.ps1",
+    "adapter_mode": "deterministic_micro_tool",
+    "default_arguments": {
+      "target_subfolder": "02_wells\\well_tops",
+      "extension": "txt",
+      "format_pattern": "Project Data Table",
+      "license_profile": "BatchProfile",
+      "petrel_option_style": "Slash",
+      "drive_letter": "P",
+      "timeout_seconds": 180,
+      "license_dialog_timeout_seconds": 3,
+      "stable_file_ticks": 1,
+      "file_poll_seconds": 1,
+      "well_tops_relative_x": 91,
+      "well_tops_relative_y": 185,
+      "export_object_relative_x": 221,
+      "export_object_relative_y": 246,
+      "context_menu_keyboard": false
+    },
+    "preconditions": [
+      {
+        "id": "automation_copy_exists",
+        "type": "file_exists",
+        "path_template": "{project_file}"
+      },
+      {
+        "id": "export_package_exists",
+        "type": "directory_exists",
+        "path_template": "{export_package}"
+      },
+      {
+        "id": "well_tops_target_folder_available",
+        "type": "directory_create_or_exists",
+        "path_template": "{export_package}\\02_wells\\well_tops"
+      },
+      {
+        "id": "interactive_desktop_required",
+        "type": "runtime_requirement",
+        "value": "Petrel must be visible in the same Windows desktop session as the GUI helper."
+      }
+    ],
+    "state_anchors": [
+      {
+        "id": "petrel_main_window",
+        "type": "window_title_regex",
+        "pattern": "Petrel E&P Software Platform"
+      },
+      {
+        "id": "explorer_input_tab_strip",
+        "type": "ocr_context_anchor",
+        "name": "Input",
+        "required_siblings": [
+          "Models",
+          "Results",
+          "Templates"
+        ],
+        "reject_ancestor_or_header": "Processes"
+      },
+      {
+        "id": "well_tops_tree_item",
+        "type": "visual_anchor",
+        "name": "Well Tops"
+      },
+      {
+        "id": "context_menu_project_data_table",
+        "type": "visual_anchor",
+        "name": "Select and show in Project Data Table"
+      },
+      {
+        "id": "clipboard_table_header",
+        "type": "clipboard_text_regex",
+        "pattern": "Well identifier.*Surface.*Depth"
+      }
+    ],
+    "actions": [
+      {
+        "id": "activate_petrel",
+        "primitive": "activate_window",
+        "postcondition": "petrel_main_window"
+      },
+      {
+        "id": "open_well_tops_context_menu",
+        "primitive": "coordinate_right_click",
+        "target": "Explorer/Input/Wells/Well Tops",
+        "postcondition": "context_menu_visible"
+      },
+      {
+        "id": "select_project_data_table",
+        "primitive": "coordinate_click",
+        "menu_item": "Select and show in Project Data Table",
+        "postcondition": "project_data_table_visible"
+      },
+      {
+        "id": "copy_table",
+        "primitive": "clipboard_copy",
+        "postcondition": "clipboard_table_header"
+      },
+      {
+        "id": "write_raw_table",
+        "primitive": "write_text_file",
+        "path_template": "{export_package}\\02_wells\\well_tops\\{output_file_name}",
+        "postcondition": "raw_table_file_written"
+      }
+    ],
+    "postconditions": [
+      {
+        "id": "gui_table_file_written",
+        "type": "file_exists",
+        "path_template": "{export_package}\\02_wells\\well_tops\\{output_file_name}"
+      },
+      {
+        "id": "gui_table_file_nonempty",
+        "type": "file_size_gt",
+        "bytes": 0
+      },
+      {
+        "id": "gui_table_import_rows_gt_zero",
+        "type": "json_field_min",
+        "field": "summary.gui_row_count",
+        "min": 1
+      },
+      {
+        "id": "manifest_validation_passes",
+        "type": "validation_status",
+        "allowed": [
+          "passed",
+          "skipped"
+        ]
+      }
+    ],
+    "artifacts": [
+      "07_workflows_reports\\automation_runs\\deterministic_gui_export_well_tops_table_clipboard_*.json",
+      "07_workflows_reports\\automation_runs\\petrel_ui_well_tops_table_export_*.trace.log",
+      "07_workflows_reports\\automation_runs\\ui_well_tops_table_export_*\\*.png",
+      "02_wells\\well_tops\\well_tops_project_data_table_detgui_*.txt",
+      "02_wells\\well_tops\\well_tops_from_petrel_gui_paste.csv",
+      "02_wells\\well_tops\\well_tops_gui_vs_source_ascii_compare.csv"
+    ],
+    "failure_policy": {
+      "fail_closed": true,
+      "do_not_retry_blindly": true,
+      "manual_intervention_when_blocked": "Capture screenshot, trace log, active window title, and clipboard character count before any manual recovery.",
+      "known_blockers": [
+        "The word Input appears in both the Explorer tab strip and the Processes pane; only Explorer/Input with sibling tabs Models, Results, and Templates is a valid target.",
+        "Petrel may not expose the Project Data Table grid through UI Automation.",
+        "The active table may not receive Ctrl+A/C unless the grid has focus.",
+        "The Input tree position may change and require recalibration of the Well Tops and context-menu coordinates."
+      ]
+    }
+  },
+  "mcp_contract": {
+    "tool": "petrel_run_deterministic_gui_workflow",
+    "default_mode": "dry_run",
+    "execute_argument": "execute",
+    "required_output_evidence": [
+      "runner_report",
+      "ui_driver_status_json",
+      "raw Petrel GUI table paste",
+      "GUI table import report",
+      "validation_report"
+    ]
+  }
+}

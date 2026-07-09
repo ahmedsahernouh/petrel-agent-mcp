@@ -1,0 +1,640 @@
+{
+  "policy_version": "2026-07-06.1",
+  "title": "Petrel MCP Failure And Fallback Policy",
+  "default_policy": {
+    "tier": "planning_policy",
+    "fail_closed": true,
+    "confidence": "design_guardrail",
+    "success_evidence": [
+      "tool returns structured JSON",
+      "version_context is present",
+      "policy metadata is attached"
+    ],
+    "critical_failures": [
+      "missing or malformed tool arguments",
+      "version_scope missing for a version-sensitive action",
+      "tool output cannot be parsed as JSON"
+    ],
+    "fallback_chain": [
+      "return the policy and next safe action",
+      "do not launch Petrel or edit native files"
+    ],
+    "retry_policy": "No blind retries. Correct inputs or move to a lower-risk read-only tool.",
+    "cleanup": [],
+    "manual_intervention": "Not required unless the target task needs a new Petrel-authored donor."
+  },
+  "policy_templates": {
+    "planning_policy": {
+      "tier": "planning_policy",
+      "fail_closed": true,
+      "confidence": "design_guardrail",
+      "runtime_gui_used": false,
+      "petrel_process_expected": false,
+      "success_evidence": [
+        "version-scoped result",
+        "referenced policy or hierarchy file",
+        "no write operation performed"
+      ],
+      "critical_failures": [
+        "knowledge index unavailable",
+        "requested target version not represented by evidence",
+        "generated plan claims an unproven export capability"
+      ],
+      "fallback_chain": [
+        "query the KB/index for narrower evidence",
+        "return design_draft instead of executable status",
+        "require donor capture or zero-GUI proof before tool promotion"
+      ],
+      "retry_policy": "Retry only after changing the query, target version, or object class list.",
+      "cleanup": [],
+      "manual_intervention": "Only needed for donor capture or Petrel-side workflow authoring."
+    },
+    "status_read_only": {
+      "tier": "status_read_only",
+      "fail_closed": true,
+      "confidence": "observability",
+      "runtime_gui_used": false,
+      "petrel_process_expected": false,
+      "success_evidence": [
+        "latest report paths",
+        "manifest row counts",
+        "domain file counts",
+        "version_context"
+      ],
+      "critical_failures": [
+        "export package missing",
+        "manifest missing or unreadable",
+        "latest report JSON malformed"
+      ],
+      "fallback_chain": [
+        "inspect export package paths directly",
+        "run register_and_validate if files exist but manifest is stale",
+        "run prepare_mvp if package scaffolding is absent"
+      ],
+      "retry_policy": "Retry after refreshing package path or running a read-only status command.",
+      "cleanup": [],
+      "manual_intervention": "Not required."
+    },
+    "zero_gui_file_processing": {
+      "tier": "zero_gui_file_processing",
+      "fail_closed": true,
+      "confidence": "preferred_runtime_path",
+      "runtime_gui_used": false,
+      "petrel_process_expected": false,
+      "success_evidence": [
+        "runtime_gui_used=false",
+        "petrel_process_launched=false",
+        "output files exist",
+        "manifest rows registered",
+        "validation report passed"
+      ],
+      "critical_failures": [
+        "source files missing",
+        "native store locked or partially copied",
+        "parser emits zero rows when rows are expected",
+        "manifest validation fails",
+        "output contains unclassified binary-adjacent symbols"
+      ],
+      "fallback_chain": [
+        "preserve raw source files and run a narrower parser",
+        "downgrade output to evidence/reference inventory instead of confirmed export",
+        "use saved Workflow Editor donor if confirmed Petrel-authored export is required",
+        "use deterministic GUI fallback only when zero-GUI cannot produce confirmed rows"
+      ],
+      "retry_policy": "Retry only with a clean source snapshot or narrowed extraction scope.",
+      "cleanup": [
+        "remove partial temp directories",
+        "do not delete preserved raw evidence"
+      ],
+      "manual_intervention": "Only needed when confirmed Petrel export rows require a donor command."
+    },
+    "saved_workflow_cli": {
+      "tier": "saved_workflow_cli",
+      "fail_closed": true,
+      "confidence": "petrel_authored_runtime",
+      "runtime_gui_used": false,
+      "petrel_process_expected": true,
+      "success_evidence": [
+        "Petrel run log contains Status: Workflow run OK",
+        "workflow_execution_status=confirmed",
+        "expected Petrel-written files exist",
+        "registration status recorded",
+        "validation report passed"
+      ],
+      "critical_failures": [
+        "Petrel exits without workflow log confirmation",
+        "workflow name missing or changed",
+        "license profile unavailable",
+        "saved Workflow Editor command does not exist",
+        "Petrel writes no expected files",
+        "validation fails"
+      ],
+      "fallback_chain": [
+        "run dry_run or validate_only first",
+        "open the automation copy read-only and inspect the workflow",
+        "map native workflow records",
+        "use deterministic GUI only to create or validate a donor",
+        "fall back to zero-GUI native package preservation"
+      ],
+      "retry_policy": "One retry only after confirming no Petrel process or file lock remains.",
+      "cleanup": [
+        "capture Petrel log",
+        "register any files already written",
+        "validate or mark partial"
+      ],
+      "manual_intervention": "Needed when the saved workflow or Petrel-side command is absent."
+    },
+    "deterministic_gui": {
+      "tier": "deterministic_gui",
+      "fail_closed": true,
+      "confidence": "fallback_runtime_path",
+      "runtime_gui_used": true,
+      "petrel_process_expected": true,
+      "success_evidence": [
+        "preflight paths pass",
+        "Petrel window title matches expected project",
+        "state anchors or approved coordinate fallback succeed",
+        "screenshots captured",
+        "expected export file exists and is non-empty",
+        "parser row count passes",
+        "manifest registration and validation pass"
+      ],
+      "critical_failures": [
+        "wrong Petrel window or PID",
+        "desktop locked, minimized, or wrong layout",
+        "unexpected modal dialog",
+        "UI anchor missing",
+        "coordinate fallback used without explicit approval",
+        "save or CRS dialog not handled",
+        "stale or partial output file accepted",
+        "parser/schema mismatch",
+        "validation fails"
+      ],
+      "fallback_chain": [
+        "use zero-GUI native/source probe for evidence",
+        "import already-saved Petrel ASCII/export file",
+        "capture a Petrel-authored donor command for Tier 2",
+        "create a new calibrated GUI profile only from screenshot and trace evidence"
+      ],
+      "retry_policy": "No blind clicks. Retry only after a specific failed anchor is recalibrated or the active Petrel window is corrected.",
+      "cleanup": [
+        "release temporary drive mapping",
+        "write screenshots and trace status",
+        "leave raw export artifact for inspection"
+      ],
+      "manual_intervention": "Required when UI layout, export dialog, or CRS dialog differs from the calibrated profile."
+    },
+    "native_read_only": {
+      "tier": "native_read_only",
+      "fail_closed": true,
+      "confidence": "mapping_evidence",
+      "runtime_gui_used": false,
+      "petrel_process_expected": false,
+      "success_evidence": [
+        "snapshot or map report path",
+        "hashes or diff ranges recorded",
+        "no native store mutation performed"
+      ],
+      "critical_failures": [
+        "project store missing",
+        "snapshot paths ambiguous",
+        "diff report incomplete",
+        "terms too broad to isolate a command record"
+      ],
+      "fallback_chain": [
+        "rerun with narrower terms",
+        "capture before/after Petrel-authored donor snapshots",
+        "do not write patches until exact bytes or offsets are proven"
+      ],
+      "retry_policy": "Retry with narrower terms or explicit snapshot paths.",
+      "cleanup": [],
+      "manual_intervention": "Needed for a new Petrel-authored before/after donor."
+    },
+    "native_same_length_patch": {
+      "tier": "native_same_length_patch",
+      "fail_closed": true,
+      "confidence": "guarded_binary_mutation",
+      "runtime_gui_used": false,
+      "petrel_process_expected": true,
+      "success_evidence": [
+        "backup path recorded",
+        "expected bytes match before write",
+        "replacement is same byte length",
+        "patch report written",
+        "Petrel run proves changed behavior",
+        "manifest validation passes",
+        "restore report and clean compare exist when patch is experimental"
+      ],
+      "critical_failures": [
+        "length mismatch",
+        "expected bytes do not match",
+        "target token not unique and no exact offset supplied",
+        "Petrel process or project store locked",
+        "patched run writes no expected output",
+        "restore compare is not clean"
+      ],
+      "fallback_chain": [
+        "dry-run the patch only",
+        "run native analyzers to locate a safer offset",
+        "capture another Petrel-authored donor diff",
+        "refuse variable-length edits until record lengths and indexes are mapped"
+      ],
+      "retry_policy": "Retry only after a fresh snapshot proves the store is restored and expected bytes still match.",
+      "cleanup": [
+        "restore patch unless keep_patch is explicitly requested",
+        "write restore compare",
+        "preserve patch and run reports"
+      ],
+      "manual_intervention": "Required when the requested edit changes byte length or object references."
+    },
+    "validation_manifest": {
+      "tier": "validation_manifest",
+      "fail_closed": true,
+      "confidence": "package_integrity",
+      "runtime_gui_used": false,
+      "petrel_process_expected": false,
+      "success_evidence": [
+        "manifest path",
+        "validation report path",
+        "row count",
+        "failed row count is zero",
+        "checksums written when requested"
+      ],
+      "critical_failures": [
+        "manifest missing",
+        "referenced export file missing",
+        "checksum mismatch",
+        "validator reports failed rows",
+        "version mismatch for required coverage"
+      ],
+      "fallback_chain": [
+        "rerun file registration",
+        "quarantine failed rows as partial",
+        "re-run source export only for missing artifacts",
+        "do not promote package status until validation passes"
+      ],
+      "retry_policy": "Retry after registration refresh or after the missing file is regenerated.",
+      "cleanup": [
+        "write validation report even on failure"
+      ],
+      "manual_intervention": "Only needed if the source Petrel export must be regenerated."
+    },
+    "petrel_launch_project": {
+      "tier": "petrel_launch_project",
+      "fail_closed": true,
+      "confidence": "operator_assist",
+      "runtime_gui_used": true,
+      "petrel_process_expected": true,
+      "success_evidence": [
+        "command preview or launcher report",
+        "project path exists",
+        "writable/read-only intent is explicit"
+      ],
+      "critical_failures": [
+        "project file missing",
+        "writable launch requested against a non-automation copy",
+        "Petrel process already open on a different project",
+        "license dialog unresolved"
+      ],
+      "fallback_chain": [
+        "dry-run command preview",
+        "open read-only",
+        "ask for manual Petrel save only when editing donors"
+      ],
+      "retry_policy": "Retry only after closing or explicitly targeting the active Petrel process.",
+      "cleanup": [
+        "record active PID and title when available"
+      ],
+      "manual_intervention": "Expected for GUI donor authoring."
+    }
+  },
+  "tool_policies": {
+    "petrel_agent_readiness": {
+      "template": "planning_policy",
+      "tool_purpose": "Report the agent-facing readiness contract, tool maturity registry, and client config status."
+    },
+    "petrel_tool_creation_hierarchy": {
+      "template": "planning_policy",
+      "tool_purpose": "Select the lowest-risk implementation tier before creating a Petrel tool."
+    },
+    "petrel_tool_failure_policy": {
+      "template": "planning_policy",
+      "tool_purpose": "Describe the failure policy for one MCP tool or all tools."
+    },
+    "petrel_status": {
+      "template": "status_read_only",
+      "tool_purpose": "Report current package readiness and latest evidence."
+    },
+    "petrel_prepare_mvp": {
+      "template": "planning_policy",
+      "tool_purpose": "Generate package plans and build sheets without launching Petrel."
+    },
+    "petrel_run_mvp": {
+      "template": "saved_workflow_cli",
+      "tool_purpose": "Run the saved ExportPiloX Workflow Editor bridge from outside Petrel. Safe by default since server 0.7.0: dry_run defaults to true.",
+      "critical_failures": [
+        "dry_run=false passed without deliberate operator intent, which launches Petrel and executes the saved workflow for real",
+        "Petrel exits without workflow log confirmation",
+        "workflow name missing or changed",
+        "license profile unavailable",
+        "saved Workflow Editor command does not exist",
+        "Petrel writes no expected files",
+        "validation fails"
+      ]
+    },
+    "petrel_open_project": {
+      "template": "petrel_launch_project",
+      "tool_purpose": "Prepare or open the automation project for inspection or donor authoring."
+    },
+    "petrel_export_well_logs_ui": {
+      "template": "deterministic_gui",
+      "tool_purpose": "Export LAS logs through the mapped Input/Wells GUI path."
+    },
+    "petrel_export_well_tops_ui": {
+      "template": "deterministic_gui",
+      "tool_purpose": "Export Well Tops ASCII through the mapped GUI path."
+    },
+    "petrel_run_deterministic_gui_workflow": {
+      "template": "deterministic_gui",
+      "tool_purpose": "Run a declarative deterministic GUI fallback workflow such as export_well_tops_ascii.",
+      "success_evidence": [
+        "runner report status=passed",
+        "ui_driver_status captured",
+        "raw Petrel ASCII export exists",
+        "ASCII import report row_count > 0",
+        "manifest validation passed"
+      ],
+      "fallback_chain": [
+        "run petrel_export_well_tops_native_probe for zero-GUI evidence",
+        "import an already-saved Petrel ASCII file",
+        "author a Petrel Workflow Editor donor command and move the task to native control"
+      ]
+    },
+    "petrel_export_native_zero_gui": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Copy and index the full Petrel native project store without Petrel launch."
+    },
+    "petrel_run_zero_gui_export_mvp": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Run raw native copy plus safe semantic extraction without Petrel launch."
+    },
+    "petrel_export_native_semantic_zero_gui": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Extract safe semantic metadata from copied native stores."
+    },
+    "petrel_export_surfaces_zero_gui": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Decode native .zhz surface arrays to XYZ CSV and ZMAP+ with mask-gated layout validation and SEG-Y-derived georeferencing, without launching Petrel.",
+      "critical_failures": [
+        "source files missing",
+        "native store locked or partially copied",
+        "data/mask footprint agreement below the 99.9% gate treated as exported instead of layout_unresolved",
+        "georeferencing SEG-Y donor missing",
+        "manifest validation fails"
+      ]
+    },
+    "petrel_write_well_tops_ascii": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Write a Petrel Well Tops ASCII (VERSION 2) file from CSV marker picks in the exact Petrel 2018.2 dialect, with re-parse verification.",
+      "critical_failures": [
+        "input CSV missing required well/surface/x/y/z columns",
+        "rows silently dropped without being counted in rows_skipped_missing_required",
+        "re-parse verification row count mismatch",
+        "dialect deviation (line endings, quoting, undefined markers) from the Petrel-authored reference export"
+      ]
+    },
+    "petrel_las_convert": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Convert a Petrel-exported LAS well log to CSV with a curve/unit/range summary.",
+      "critical_failures": [
+        "LAS file missing or unreadable",
+        "curves dropped without appearing in the summary",
+        "null value not preserved in the summary"
+      ]
+    },
+    "petrel_project_audit_report": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Generate a self-contained HTML + JSON project audit from export-package evidence files, without launching Petrel.",
+      "critical_failures": [
+        "export package missing",
+        "audit claims data that no evidence file supports",
+        "missing evidence rendered as populated sections instead of not-available notes",
+        "manifest validation fails after registration"
+      ]
+    },
+    "petrel_export_seismic_zgy_zero_gui": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Read native ZGY cubes with pyzgy and export geometry reports, mid-slices, and optional full volumes without launching Petrel.",
+      "critical_failures": [
+        "ZGY file missing or unreadable",
+        "pyzgy dependency missing (must preflight-fail, not crash mid-read)",
+        "cube reported exported without a written report",
+        "volume export silently truncated",
+        "manifest validation fails"
+      ]
+    },
+    "petrel_survey_geometry": {
+      "template": "status_read_only",
+      "tool_purpose": "Report seismic survey origin, inline/xline vectors, rotation, bin size, and CRS from a Petrel-authored SEG-Y export. Read-only."
+    },
+    "petrel_grid_convert": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Convert gridded surface files between ZMAP+ and XYZ CSV in the project's zmapio dialect as part of the extract-process-import chain.",
+      "critical_failures": [
+        "input file missing or unreadable",
+        "irregular scatter passed where a regular lattice is required (must fail closed as irregular_grid)",
+        "null-value convention broken (1e30 dialect)",
+        "silent canvas change: reconstructed ZMAP canvas is the live-node bounding box and must be reported, not hidden"
+      ]
+    },
+    "petrel_export_well_tables_zero_gui": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Derive well headers, curve inventory, and conservative well-top references from package data.",
+      "critical_failures": [
+        "LAS folder missing",
+        "curve parser cannot read LAS files",
+        "well-top references are mistaken for confirmed marker-pick rows"
+      ],
+      "fallback_chain": [
+        "rerun LAS export or native store export",
+        "label well-top rows as reference evidence only",
+        "use Petrel-authored Well Tops ASCII export for confirmed marker-pick rows"
+      ]
+    },
+    "petrel_export_well_tops_native_probe": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Probe native/package files for clean well-top evidence and source-ASCII fallback rows.",
+      "critical_failures": [
+        "native binary-adjacent strings pollute CSV output",
+        "source ASCII table not found",
+        "native_binary_marker_pick_rows incorrectly marked confirmed"
+      ],
+      "fallback_chain": [
+        "canonicalize top names against known project evidence",
+        "keep native_binary_confirmed=no",
+        "use deterministic GUI Well Tops ASCII export for confirmed rows"
+      ]
+    },
+    "petrel_import_gui_well_tops_table": {
+      "template": "zero_gui_file_processing",
+      "tool_purpose": "Import pasted Petrel GUI Well Tops table as validation evidence."
+    },
+    "petrel_register_and_validate": {
+      "template": "validation_manifest",
+      "tool_purpose": "Register generated artifacts and validate checksums."
+    },
+    "petrel_native_map_workflow": {
+      "template": "native_read_only",
+      "tool_purpose": "Map workflow regions in native .ptd stores without writing."
+    },
+    "petrel_native_snapshot": {
+      "template": "native_read_only",
+      "tool_purpose": "Capture .pet/.ptd snapshots with hashes."
+    },
+    "petrel_native_compare_snapshots": {
+      "template": "native_read_only",
+      "tool_purpose": "Compare native snapshots and report diffs."
+    },
+    "petrel_native_patch_string": {
+      "template": "native_same_length_patch",
+      "tool_purpose": "Guarded same-length string patch in a native store."
+    },
+    "petrel_native_patch_offset": {
+      "template": "native_same_length_patch",
+      "tool_purpose": "Guarded exact-offset patch in a native store."
+    },
+    "petrel_export_segy_filename_patch": {
+      "template": "native_same_length_patch",
+      "tool_purpose": "Patch a saved ExportSeismicCmd filename tail, run Petrel, validate, and restore."
+    },
+    "petrel_export_segy_token_patch": {
+      "template": "native_same_length_patch",
+      "tool_purpose": "Patch a saved ExportSeismicCmd output token, run Petrel, validate, and restore."
+    },
+    "petrel_analyze_exportseismiccmd_records": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only map of saved ExportSeismicCmd records."
+    },
+    "petrel_analyze_workflow_command_clone_readiness": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only gate that reports whether Petrel-authored command donor evidence is sufficient for safe zero-GUI Workflow Editor command cloning.",
+      "success_evidence": [
+        "current command records are mapped from live Data.ptd",
+        "first and second donor compare reports are loaded",
+        "readiness gates are written to JSON and CSV",
+        "clone_safe is explicitly reported"
+      ],
+      "critical_failures": [
+        "current command records cannot be bounded",
+        "donor compare reports missing or stale",
+        "clone_safe=true without isolated length/index/GUID evidence",
+        "tool writes or patches native stores"
+      ],
+      "fallback_chain": [
+        "capture another Petrel-authored donor diff",
+        "map BXML/LZ4 length fields and command-list indexes",
+        "keep using same-length parameter patch-run-restore tools only"
+      ]
+    },
+    "petrel_analyze_workflow_clone_side_effects": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only analyzer that classifies Data.ptd and Model.ptd side effects from Petrel-authored command donor diffs before any zero-GUI command clone is attempted.",
+      "success_evidence": [
+        "first and second donor compare reports are loaded",
+        "added command payloads are mapped",
+        "side-effect range CSV is written",
+        "side-effect summary CSV is written",
+        "required-action CSV is written",
+        "side_effects_isolated is explicitly reported"
+      ],
+      "critical_failures": [
+        "donor snapshots are missing",
+        "side-effect ranges cannot be classified",
+        "required-action evidence is missing",
+        "side_effects_isolated=true while blocking Model.ptd/Data.ptd side effects remain",
+        "tool writes or patches native stores"
+      ],
+      "fallback_chain": [
+        "map Model.ptd UI/object-reference updates",
+        "map Data.ptd command-list/index updates",
+        "capture a cleaner Petrel-authored donor diff",
+        "keep using same-length parameter patch-run-restore tools only"
+      ]
+    },
+    "petrel_analyze_workflow_clone_storage_blocks": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only analyzer that splits mixed ExportSeismicCmd command payload bytes from Data.ptd store-growth blocks before any zero-GUI command clone is attempted.",
+      "success_evidence": [
+        "first and second donor compare reports are loaded",
+        "command payload bounds are mapped",
+        "storage block segment CSV is written",
+        "storage block summary CSV is written",
+        "required-action CSV is written",
+        "gate CSV is written",
+        "storage_payload_separated is explicitly reported"
+      ],
+      "critical_failures": [
+        "donor snapshots are missing",
+        "command payload bounds cannot be mapped",
+        "mixed storage-growth blocks remain unsplit",
+        "storage_payload_separated=true while mixed payload/store-growth segments remain",
+        "tool writes or patches native stores"
+      ],
+      "fallback_chain": [
+        "run petrel_analyze_workflow_clone_side_effects",
+        "inspect storage block segment CSV",
+        "map neighbor/extended record semantics",
+        "map Data.ptd index/page churn and Model.ptd side effects",
+        "keep using same-length parameter patch-run-restore tools only"
+      ]
+    },
+    "petrel_extract_workflow_command_clone_recipe": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only extractor that saves candidate command payload evidence from Petrel-authored donor diffs and blocks application until structural clone gates are mapped.",
+      "success_evidence": [
+        "first and second donor compare reports are loaded",
+        "added command records are detected",
+        "candidate payload binary files are written under the report directory",
+        "payload mutation CSV is written",
+        "side-effect summary CSV is written",
+        "payload signal CSV is written",
+        "negative-control refusal CSV is written",
+        "recipe_safe_to_apply is explicitly reported"
+      ],
+      "critical_failures": [
+        "donor snapshots are missing",
+        "added command records cannot be detected",
+        "payload files are not written",
+        "payload mutation, side-effect, payload-signal, or negative-control evidence is missing",
+        "recipe_safe_to_apply=true without mapped length/index/GUID/object-reference evidence",
+        "tool writes or patches native stores"
+      ],
+      "fallback_chain": [
+        "run petrel_analyze_workflow_command_clone_readiness",
+        "capture a cleaner Petrel-authored donor diff",
+        "map BXML/LZ4 length fields and command-list indexes",
+        "keep using same-length parameter patch-run-restore tools only"
+      ]
+    },
+    "petrel_export_systemcmd_token_patch": {
+      "template": "native_same_length_patch",
+      "tool_purpose": "Patch a saved SystemCmd bridge token, run Petrel, validate, and restore."
+    },
+    "petrel_analyze_systemcmd_records": {
+      "template": "native_read_only",
+      "tool_purpose": "Read-only map of saved SystemCmd records."
+    },
+    "petrel_generate_workflow_from_okf": {
+      "template": "planning_policy",
+      "tool_purpose": "Generate workflow scaffolds from version-scoped OKF retrieval evidence."
+    },
+    "petrel_validate_workflow_coverage": {
+      "template": "validation_manifest",
+      "tool_purpose": "Validate manifest coverage against expected object types and formats."
+    },
+    "petrel_query_kb": {
+      "template": "planning_policy",
+      "tool_purpose": "Query local Petrel knowledge evidence before designing automation."
+    }
+  }
+}

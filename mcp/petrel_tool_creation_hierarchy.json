@@ -1,0 +1,140 @@
+{
+  "id": "petrel_tool_creation_hierarchy",
+  "version": 1,
+  "title": "Petrel Tool Creation Hierarchy",
+  "scope": "No-Ocean Petrel MCP and CLI tool design for Petrel 2018.2 automation copy",
+  "rule": "Use the highest tier that can produce the required outputs with verifiable evidence. Do not move to a lower tier until the higher tier is proven insufficient for the specific task.",
+  "required_tool_contract": {
+    "task": "What user-visible Petrel automation task this tool performs.",
+    "inputs": "Named required inputs, including files, project package paths, workflow ids, object selectors, and version assumptions.",
+    "outputs": "Named generated outputs with expected paths, formats, schema, and manifest registration rules.",
+    "validation": "Concrete pass/fail checks, including row counts, checksums, parser checks, Petrel log evidence when applicable, and manifest validation.",
+    "runtime_boundary": "One of zero_gui_python, zero_gui_petrel_workflow_editor, deterministic_gui, or discovery_only.",
+    "evidence": "Report paths, screenshots if GUI is used, before/after snapshots if native workflow storage is changed, and restore reports for probes."
+  },
+  "tiers": [
+    {
+      "rank": 1,
+      "id": "zero_gui_python",
+      "name": "Zero-GUI Python or direct file processing",
+      "preferred": true,
+      "petrel_launch_allowed": false,
+      "desktop_gui_allowed": false,
+      "description": "Read project/export/package files directly with Python or shell tooling, decode what is safely understood, write package outputs, register them, and validate checksums.",
+      "use_when": [
+        "The required data exists in accessible project, export, LAS, CSV, XML, SQLite, JSON, text, or already copied native files.",
+        "A Python parser can produce the requested output with enough confidence and traceable evidence.",
+        "The task is inventory, metadata extraction, comparison, manifest generation, validation, or safe native-store copying."
+      ],
+      "examples": [
+        "petrel_export_native_zero_gui",
+        "petrel_export_native_semantic_zero_gui",
+        "petrel_export_well_tables_zero_gui",
+        "petrel_export_well_tops_native_probe"
+      ],
+      "required_evidence": [
+        "runtime_gui_used=false",
+        "petrel_process_launched=false",
+        "parser/report JSON",
+        "manifest rows",
+        "validation report"
+      ],
+      "failure_to_next_tier": "Only escalate if the requested confirmed Petrel output cannot be decoded from files with enough confidence."
+    },
+    {
+      "rank": 2,
+      "id": "zero_gui_petrel_workflow_editor",
+      "name": "Zero-GUI Petrel Workflow Editor native control",
+      "preferred": false,
+      "petrel_launch_allowed": true,
+      "desktop_gui_allowed": false,
+      "description": "Use existing saved Workflow Editor commands, Petrel command-line workflow execution, workflow variables, or guarded native .ptd parameter edits without desktop GUI interaction.",
+      "use_when": [
+        "A saved Workflow Editor command already exists and can be run through Petrel command-line workflow execution.",
+        "A same-length parameter patch is mapped, backed up, exact-offset verified, and restorable.",
+        "The native command payload is sufficiently mapped for the requested parameter mutation.",
+        "Petrel must author the final universal-format export, but the needed command path already exists in the project."
+      ],
+      "examples": [
+        "run_petrel_full_export_mvp.ps1",
+        "petrel_export_segy_filename_patch",
+        "petrel_export_segy_token_patch",
+        "petrel_export_systemcmd_token_patch",
+        "petrel_analyze_exportseismiccmd_records"
+      ],
+      "required_evidence": [
+        "Petrel workflow log with Status: Workflow run OK when Petrel is launched",
+        "workflow_execution_status=confirmed",
+        "native snapshot/compare reports for binary edits",
+        "patch and restore reports for probes",
+        "Petrel-written output files",
+        "manifest validation report"
+      ],
+      "failure_to_next_tier": "Escalate only when no saved or safely patchable Workflow Editor command can produce the requested output."
+    },
+    {
+      "rank": 3,
+      "id": "deterministic_gui",
+      "name": "Reusable deterministic GUI workflow",
+      "preferred": false,
+      "petrel_launch_allowed": true,
+      "desktop_gui_allowed": true,
+      "description": "Run a named, declarative GUI micro-workflow with fixed anchors, bounded actions, screenshots, trace logs, and fail-closed output validation.",
+      "use_when": [
+        "Zero-GUI Python cannot decode the requested output.",
+        "Zero-GUI Workflow Editor/native control cannot create or run the needed export yet.",
+        "The GUI sequence is stable enough to encode as a reusable workflow with inputs, outputs, and postconditions.",
+        "The workflow is needed for donor capture, confirmed Petrel export, or temporary production fallback."
+      ],
+      "examples": [
+        "petrel_run_deterministic_gui_workflow",
+        "export_well_tops_ascii"
+      ],
+      "required_evidence": [
+        "workflow spec JSON",
+        "runner report",
+        "trace log",
+        "screenshots",
+        "exported files",
+        "parser/import report",
+        "manifest validation report"
+      ],
+      "failure_to_next_tier": "If a deterministic GUI workflow cannot be made stable, mark the task discovery_only and capture the missing anchors or Petrel-authored donor diff."
+    },
+    {
+      "rank": 4,
+      "id": "discovery_only",
+      "name": "Discovery or donor capture only",
+      "preferred": false,
+      "petrel_launch_allowed": true,
+      "desktop_gui_allowed": true,
+      "description": "Use manual or assisted Petrel interaction only to capture evidence, author a donor command, or map native records. Do not present this as an automated tool.",
+      "use_when": [
+        "The GUI path is not stable enough for a deterministic workflow.",
+        "A Petrel-authored before/after diff is required before safe native .ptd automation.",
+        "The required object references, lengths, indexes, or command envelopes are not mapped."
+      ],
+      "required_evidence": [
+        "before snapshot",
+        "after snapshot",
+        "snapshot compare report",
+        "operator notes",
+        "next candidate tier"
+      ],
+      "failure_to_next_tier": "No lower tier exists. The output is a mapping/donor-capture task, not an automation tool."
+    }
+  ],
+  "workflow_composition": {
+    "description": "A tool may be a small workflow of other tools, but each step must keep its tier and evidence boundary explicit.",
+    "required_steps": [
+      "read_inputs",
+      "choose_highest_viable_tier",
+      "execute_or_dry_run",
+      "write_outputs",
+      "register_outputs",
+      "validate_outputs",
+      "write_run_report"
+    ],
+    "composition_rule": "A higher-level tool may call lower-level tools only after the decision report records why higher tiers were insufficient for that subtask."
+  }
+}
