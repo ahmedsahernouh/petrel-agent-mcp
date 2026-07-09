@@ -573,10 +573,24 @@ def main() -> int:
             for item in raw_patch_audit["evidence"]
         )
 
+        # Every tools/call above must have appended a parseable line to today's usage log.
+        from datetime import datetime, timezone
+
+        usage_log = (
+            REPO_ROOT / "build" / "mcp_usage" / f"petrel_mcp_usage_{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+        )
+        assert usage_log.exists(), f"usage log missing: {usage_log}"
+        usage_lines = usage_log.read_text(encoding="utf-8").strip().splitlines()
+        assert usage_lines, "usage log is empty"
+        last_record = json.loads(usage_lines[-1])
+        assert last_record["tool"] in tool_names
+        assert last_record["outcome"] in ("ok", "error")
+
         print("Petrel MCP smoke test passed")
         print(f"Tools: {', '.join(sorted(tool_names))}")
         print(f"Export package: {payload['export_package']}")
         print(f"Manifest rows: {payload['manifest']['row_count']}")
+        print(f"Usage log: {usage_log} ({len(usage_lines)} calls logged)")
         return 0
     finally:
         proc.terminate()

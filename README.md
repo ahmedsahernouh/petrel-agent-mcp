@@ -28,6 +28,7 @@ Every tool is built on the highest viable tier of a strict hierarchy:
 - Native project files are never mutated without snapshot → patch → validate → restore evidence.
 - Every exported artifact is registered in a **manifest with SHA-256 checksums** and validated.
 - Anything unproven refuses loudly (`layout_unresolved`, `preflight_failed`, `blocked`) instead of guessing.
+- Every tool call is appended to a local **usage log** (`build\mcp_usage\*.jsonl`: tool, duration, outcome, audit status, failure class) so behavior can be watched live and failures reported with evidence — see `docs/INSTALL_NEW_MACHINE.md` §9.
 
 ## Quickstart (new machine)
 

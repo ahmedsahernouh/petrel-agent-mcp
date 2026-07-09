@@ -18,6 +18,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 import traceback
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,7 +27,7 @@ from typing import Any
 
 
 SERVER_NAME = "petrel-no-ocean-control"
-SERVER_VERSION = "0.8.3"
+SERVER_VERSION = "0.8.4"
 PROTOCOL_VERSION = "2024-11-05"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -4452,6 +4453,66 @@ TOOLS: dict[str, Tool] = {
 apply_version_aware_inputs(TOOLS)
 
 
+USAGE_LOG_DIR = REPO_ROOT / "build" / "mcp_usage"
+
+
+def usage_logging_enabled() -> bool:
+    return os.environ.get("PETREL_MCP_USAGE_LOG", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def build_usage_record(
+    tool_name: str,
+    arguments: dict[str, Any],
+    started: float,
+    result: dict[str, Any] | None = None,
+    error: BaseException | None = None,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "server_version": SERVER_VERSION,
+        "tool": tool_name,
+        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+        "outcome": "error" if error is not None else "ok",
+    }
+    scalar_args = {
+        key: (value if not isinstance(value, str) or len(value) <= 200 else value[:200] + "...")
+        for key, value in arguments.items()
+        if isinstance(value, (str, int, float, bool)) and key not in ("version_scope",)
+    }
+    if scalar_args:
+        record["args"] = scalar_args
+    if error is not None:
+        record["error"] = str(error)[:500]
+        return record
+    try:
+        content = (result or {}).get("content") or []
+        payload = json.loads(str(content[0].get("text") or "{}")) if content else {}
+        if isinstance(payload, dict):
+            if payload.get("status") is not None:
+                record["status"] = payload.get("status")
+            audit = payload.get("mcp_result_audit")
+            if isinstance(audit, dict):
+                record["audit_status"] = audit.get("status")
+                if audit.get("failure_class"):
+                    record["failure_class"] = audit.get("failure_class")
+    except Exception:
+        record["status"] = "unparsed"
+    return record
+
+
+def log_tool_usage(record: dict[str, Any]) -> None:
+    """Append one JSON line per tool call. Must never break a tool call."""
+    if not usage_logging_enabled():
+        return
+    try:
+        USAGE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = USAGE_LOG_DIR / f"petrel_mcp_usage_{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
     request_id = request.get("id")
     method = request.get("method")
@@ -4482,7 +4543,13 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             arguments.setdefault("petrel_version", DEFAULT_PETREL_VERSION)
             arguments.setdefault("version_scope", DEFAULT_VERSION_SCOPE)
             arguments.setdefault("target_versions", [arguments["petrel_version"]])
-            result = annotate_tool_response(name, TOOLS[name].handler(arguments))
+            started = time.perf_counter()
+            try:
+                result = annotate_tool_response(name, TOOLS[name].handler(arguments))
+            except BaseException as exc:
+                log_tool_usage(build_usage_record(name, arguments, started, error=exc))
+                raise
+            log_tool_usage(build_usage_record(name, arguments, started, result=result))
         elif method == "resources/list":
             result = {"resources": []}
         elif method == "prompts/list":

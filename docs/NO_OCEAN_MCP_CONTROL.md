@@ -118,6 +118,8 @@ python_path tool argument -> PETREL_MCP_PYTHON -> PYTHON -> MCP server sys.execu
 
 If `python_path` is supplied, it is authoritative: a bad explicit path fails preflight instead of falling back silently.
 
+Since server 0.8.4 every `tools/call` appends one JSON line to a per-day usage log at `build\mcp_usage\petrel_mcp_usage_YYYYMMDD.jsonl` (UTC timestamp, server version, tool, duration_ms, scalar args, outcome ok/error, tool status, audit status, failure class). Logging is fail-soft (it can never break a tool call) and can be disabled with `PETREL_MCP_USAGE_LOG=0`. The smoke test asserts the log is written.
+
 A remote-access option was evaluated on 2026-07-09 and noted for the roadmap, not built: a FastMCP 2.x proxy can wrap this stdio server unchanged and re-expose it over Streamable HTTP for agents running on a different machine than Petrel. If ever built, it lives in its own opt-in script plus `requirements-remote.txt` and must never be imported by `mcp\petrel_mcp_server.py`; the server stays pure stdlib. Any such gateway needs bearer-token auth and localhost/VPN-only binding because the tool surface can launch GUI automation. Rewriting the server itself on FastMCP was rejected.
 
 Semantic GUI tools that locate rows by OCR resolve Tesseract in this order:
