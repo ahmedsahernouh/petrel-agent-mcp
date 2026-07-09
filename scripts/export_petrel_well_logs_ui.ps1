@@ -1016,8 +1016,14 @@ function Find-ExplorerInputTabByOcr {
     [void]$siblingLabels.Add("Models")
     if ($null -ne $results) { [void]$siblingLabels.Add("Results") }
     if ($null -ne $templates) { [void]$siblingLabels.Add("Templates") }
-    if ($siblingLabels.Count -lt 3) {
-        Write-RunTrace "explorer_input_tab: rejected Input because sibling tab labels were incomplete. found=$($siblingLabels -join ',') strip=$stripTop-$stripBottom"
+    # Require Models plus at least one other data tab. Demanding all three
+    # (Models AND Results AND Templates) caused false negatives: when the Models
+    # tab is the active one, OCR reliably reads the bold active label but can miss
+    # a dimmer sibling, which used to fail the whole activation even though the
+    # Input tab was clearly present. The left-of-Models position and the
+    # reject-below-Processes guard below still prevent matching stray "Input" text.
+    if ($siblingLabels.Count -lt 2) {
+        Write-RunTrace "explorer_input_tab: rejected Input because no sibling data tab was found next to Models. found=$($siblingLabels -join ',') strip=$stripTop-$stripBottom"
         return $null
     }
 
@@ -1041,9 +1047,19 @@ function Activate-ExplorerInputTab {
         [switch]$FailClosed
     )
 
-    $match = Find-ExplorerInputTabByOcr -MainWindow $MainWindow
+    # Self-heal: retry the OCR find across a few Petrel repaints. When another tab
+    # (e.g. Models) is active, the tree redraw can lag the first OCR pass; a short
+    # retry lets the tab strip settle instead of failing the run outright.
+    $match = $null
+    for ($attempt = 1; $attempt -le 3 -and $null -eq $match; $attempt++) {
+        $match = Find-ExplorerInputTabByOcr -MainWindow $MainWindow
+        if ($null -eq $match -and $attempt -lt 3) {
+            Write-RunTrace "explorer_input_tab: find attempt $attempt did not confirm the Input tab; brief settle then retry"
+            Start-Sleep -Milliseconds 400
+        }
+    }
     if ($null -eq $match) {
-        $message = "Explorer Input tab was not confirmed. The selector requires the data tab strip with sibling labels Models, Results, and Templates, and rejects Processes > Input."
+        $message = "Explorer Input tab was not confirmed after 3 attempts. The selector requires the data tab strip (Input left of Models, with at least one of Results/Templates) and rejects Processes > Input."
         if ($FailClosed) {
             throw $message
         }
@@ -1051,8 +1067,16 @@ function Activate-ExplorerInputTab {
         return $null
     }
 
+    # Click the Input tab to make it active, then confirm the switch actually took
+    # by re-locating the strip; click once more if Petrel had not repainted yet.
     Click-OcrWindowMatch -MainWindow $MainWindow -Match $match | Out-Null
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Milliseconds 400
+    $confirm = Find-ExplorerInputTabByOcr -MainWindow $MainWindow
+    if ($null -ne $confirm) {
+        Click-OcrWindowMatch -MainWindow $MainWindow -Match $confirm | Out-Null
+        Start-Sleep -Milliseconds 250
+        $match = $confirm
+    }
     return $match
 }
 
@@ -1591,6 +1615,23 @@ function Invoke-WellTopsExportMenu {
 
     $rect = Get-ElementRect -Element $MainWindow
         Write-RunTrace "welltops_menu: main rect $($rect.Left),$($rect.Top),$($rect.Width),$($rect.Height)"
+
+    # Self-heal the Explorer pane before selecting Well Tops, in BOTH modes. If a
+    # leftover Models/Results/Templates view is active, the coordinate click (or the
+    # OCR tree scan) would land on the wrong tree - this is the "Models pane was up
+    # instead of Input pane" failure. Best-effort here; the non-coordinate path
+    # re-activates fail-closed below, so a confirmed switch is still required there.
+    try {
+        $preTab = Activate-ExplorerInputTab -MainWindow $MainWindow
+        if ($null -ne $preTab) {
+            Write-RunTrace "welltops_menu: pre-activated Explorer Input tab '$($preTab.text)'"
+        } else {
+            Write-RunTrace "welltops_menu: Input tab pre-activation not confirmed (continuing)"
+        }
+    } catch {
+        Write-RunTrace "welltops_menu: Input tab pre-activation error $($_.Exception.Message)"
+    }
+
     if ($CoordinateFallback) {
         $wellTopsX = [int]($rect.Left + $WellTopsRelativeX)
         $wellTopsY = [int]($rect.Top + $WellTopsRelativeY)
@@ -1935,34 +1976,42 @@ function Submit-WellTopsSaveDialogByCoordinates {
     $rect = Get-ElementRect -Element $MainWindow
     $fileNameX = [int]($rect.Left + 334)
     $fileNameY = [int]($rect.Top + 370)
-    $saveX = [int]($rect.Left + 527)
-    $saveY = [int]($rect.Top + 370)
-    $crsOkForAllX = [int]($rect.Left + 748)
-    $crsOkForAllY = [int]($rect.Top + 516)
     Add-DiagnosticScreenshot -FileName "03_welltops_export_dialog_before_path.png"
     Write-RunTrace "welltops_save: coordinate fallback file field at $fileNameX,$fileNameY"
     Click-Point -X $fileNameX -Y $fileNameY
-    Start-Sleep -Milliseconds 250
+    Start-Sleep -Milliseconds 200
     [System.Windows.Forms.SendKeys]::SendWait("^a")
-    Start-Sleep -Milliseconds 100
+    Start-Sleep -Milliseconds 80
     Write-RunTrace "welltops_save: coordinate fallback type output $OutputFile"
     [System.Windows.Forms.SendKeys]::SendWait($OutputFile)
-    Start-Sleep -Milliseconds 250
+    Start-Sleep -Milliseconds 150
     Add-DiagnosticScreenshot -FileName "04_welltops_export_dialog_after_path.png"
-    Write-RunTrace "welltops_save: coordinate fallback click save at $saveX,$saveY"
-    Click-Point -X $saveX -Y $saveY
-    Start-Sleep -Milliseconds 1200
-    Add-DiagnosticScreenshot -FileName "05_welltops_after_save_click.png"
-    Write-RunTrace "welltops_save: coordinate fallback click CRS OK for all at $crsOkForAllX,$crsOkForAllY"
-    Click-Point -X $crsOkForAllX -Y $crsOkForAllY
-    Start-Sleep -Milliseconds 1200
+    # A file name typed into a Windows save dialog is committed by its default
+    # button (Save) on Enter. Pressing Enter right after the paste is faster and
+    # more reliable than a fixed-coordinate Save click, and it is what a human does.
+    Write-RunTrace "welltops_save: coordinate fallback commit filename with Enter"
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+
+    # A confirmation-style CRS dialog ("OK for all" defaulted) follows the save.
+    # Find-TopLevelWindowByTitleRegex polls internally and returns the moment the
+    # dialog appears, so a small timeout waits only as long as needed, then Enter
+    # commits it immediately instead of a fixed-coordinate click plus a 1.2s sleep.
+    $crsDialog = Find-TopLevelWindowByTitleRegex -Pattern "Coordinate reference system selection|OK for all" -Timeout 4
+    $crsShown = ($null -ne $crsDialog)
+    if ($crsShown) {
+        Write-RunTrace "welltops_save: coordinate fallback commit CRS with Enter"
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+        Start-Sleep -Milliseconds 200
+    } else {
+        Write-RunTrace "welltops_save: coordinate fallback CRS dialog not observed within wait window"
+    }
     Add-DiagnosticScreenshot -FileName "06_welltops_after_crs_click.png"
 
     return [pscustomobject]@{
         dialog_title = "Export as"
         format_status = "coordinate_existing_petrel_well_tops_ascii"
         overwrite_status = "not_checked_unique_filename"
-        crs_status = "coordinate_ok_for_all_attempted"
+        crs_status = if ($crsShown) { "coordinate_enter_commit" } else { "crs_not_shown" }
     }
 }
 
