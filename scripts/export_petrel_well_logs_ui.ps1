@@ -1844,6 +1844,56 @@ function Find-TopLevelDialogByRegex {
     return $null
 }
 
+function Get-DialogInputControls {
+    # Collect the ComboBox and Edit controls of a save/export dialog WITHOUT the
+    # FindAll(TreeScope::Descendants) hang: a Windows "Export as" dialog contains a
+    # shell file-list view (SysListView32 / DirectUIHWND) with potentially thousands
+    # of item elements, and a full-descendants UIA walk recurses into it and can
+    # block for seconds-to-minutes under load. This does a depth-limited manual walk
+    # via the ControlView TreeWalker and PRUNES the file-list/tree/datagrid subtrees,
+    # so it only visits the dialog's control band (combos, edits, buttons).
+    param(
+        [Parameter(Mandatory = $true)][System.Windows.Automation.AutomationElement]$Dialog,
+        [int]$MaxDepth = 5
+    )
+
+    $combos = New-Object System.Collections.Generic.List[object]
+    $edits = New-Object System.Collections.Generic.List[object]
+    $comboCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::ComboBox)
+    $editCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::Edit)
+    $pruneAt = @("ControlType.List", "ControlType.Tree", "ControlType.DataGrid", "ControlType.Document", "ControlType.Table")
+
+    # Bounded breadth-first walk using FindAll(TreeScope::Children) - each call is a
+    # single, safe UIA query that returns only one level and never recurses into the
+    # shell file-list view (the source of the Descendants hang). Container nodes are
+    # expanded to the next level; list/tree/grid nodes are pruned so their thousands
+    # of item elements are never enumerated.
+    $frontier = New-Object System.Collections.Generic.List[object]
+    $frontier.Add($Dialog)
+    for ($depth = 0; $depth -lt $MaxDepth -and $frontier.Count -gt 0; $depth++) {
+        $next = New-Object System.Collections.Generic.List[object]
+        foreach ($node in $frontier) {
+            foreach ($combo in @($node.FindAll([System.Windows.Automation.TreeScope]::Children, $comboCondition))) {
+                [void]$combos.Add($combo)
+            }
+            foreach ($edit in @($node.FindAll([System.Windows.Automation.TreeScope]::Children, $editCondition))) {
+                [void]$edits.Add($edit)
+            }
+            foreach ($child in @($node.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition))) {
+                try {
+                    if ($pruneAt -notcontains $child.Current.ControlType.ProgrammaticName) {
+                        [void]$next.Add($child)
+                    }
+                } catch {
+                    continue
+                }
+            }
+        }
+        $frontier = $next
+    }
+    return [pscustomobject]@{ Combos = $combos; Edits = $edits }
+}
+
 function Select-ExportFormatIfPresent {
     param(
         [Parameter(Mandatory = $true)][System.Windows.Automation.AutomationElement]$Dialog,
@@ -1854,8 +1904,14 @@ function Select-ExportFormatIfPresent {
         return "not_requested"
     }
 
-    $comboCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::ComboBox)
-    $combos = @($Dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, $comboCondition))
+    # Fast, file-list-pruned walk first (avoids the Descendants hang). Only fall back
+    # to the full FindAll if the pruned walk somehow found no combo at all.
+    $combos = @((Get-DialogInputControls -Dialog $Dialog).Combos)
+    if ($combos.Count -eq 0) {
+        Write-RunTrace "welltops_save: pruned combo walk found none; falling back to descendants scan"
+        $comboCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::ComboBox)
+        $combos = @($Dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, $comboCondition))
+    }
     foreach ($combo in $combos) {
         try {
             $currentValue = Get-ComboText -Combo $combo
@@ -1977,8 +2033,16 @@ function Set-SaveDialogFilePath {
         [Parameter(Mandatory = $true)][string]$OutputFile
     )
 
-    $editCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::Edit)
-    $edits = @($Dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCondition))
+    # Same pruned walk as the format combo (avoids the Descendants hang on the shell
+    # file-list view). The "File name" field is a ComboBox with an unnamed inner Edit,
+    # so search both the collected Edits and, if needed, the Combos' own edit child.
+    $controls = Get-DialogInputControls -Dialog $Dialog
+    $edits = @($controls.Edits)
+    if ($edits.Count -eq 0) {
+        Write-RunTrace "welltops_save: pruned edit walk found none; falling back to descendants scan"
+        $editCondition = New-ControlTypeCondition -ControlType ([System.Windows.Automation.ControlType]::Edit)
+        $edits = @($Dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCondition))
+    }
     $targetEdit = $null
     foreach ($edit in $edits) {
         try {
