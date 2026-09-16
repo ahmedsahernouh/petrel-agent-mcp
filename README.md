@@ -1,12 +1,10 @@
 # Petrel Agent MCP
 
-**An AI agent control surface for Schlumberger Petrel — with no Ocean SDK, no vendor API, and no Python connector.**
+This repository is a 41-tool [Model Context Protocol](https://modelcontextprotocol.io) server for practical Petrel 2018.2 automation experiments. It gives an AI client explicit tools for inventory, export, conversion, audit and selected round-trip workflows without depending on the Ocean SDK.
 
-This repository contains a 41-tool [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI agents (Claude, Codex, or any MCP client) inventory, export, convert, audit, and round-trip data through Petrel 2018.2. It exists to demonstrate a broader thesis:
+The idea is straightforward: expose only operations that can be checked, and return the evidence and limits with every result. Some routes work directly on project files, some call saved Petrel workflows, and a small number use bounded GUI steps when there is no safer route yet.
 
-> **Agentic AI can control software that has no API.** Old versions, closed desktop applications, license-gated vendor SDKs — if a human can operate it, an agent can be given a safe, deterministic, evidence-gated tool surface for it.
-
-Petrel 2018.2 is the demonstration case, not the boundary. Nothing here uses the Ocean developer framework or any modern Petrel connector; connectors for this version either do not exist or require licenses this project deliberately does without.
+This is a version-scoped demonstration, not general Petrel automation. The recorded evidence is for Petrel 2018.2 with a Petrel 2010 demo-project automation copy. Other versions and projects need their own validation.
 
 ## How it works: four routes
 
@@ -19,7 +17,7 @@ Every tool is built on the highest viable tier of a strict hierarchy:
 | 3 | **Deterministic GUI micro-workflows** — fail-closed UIA + OCR automation, no hardcoded coordinates | Well Tops ASCII export (validated 84/84 rows), well logs LAS export |
 | 4 | **Discovery / donor capture** — mapping and analysis only, never production automation | native workflow region mapper, clone-readiness analyzers |
 
-**32 of the 41 tools never start Petrel at all** — they work purely on project files, so they run without consuming a Petrel license (the project files themselves originate from a licensed Petrel).
+**32 of the 41 tools never start Petrel at all.** They work on project or export files; the files themselves still originate from licensed Petrel use.
 
 ## Safety model
 
